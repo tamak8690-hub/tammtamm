@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>となりのせかい</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  :root { --fg:#f4f1ea; --bg:#07070c; --dim:#8d8a95; --accent:#ffd97a; --soft:#9fd3ff; }
+  * { box-sizing:border-box; }
+  :root { color-scheme:dark; padding-top:env(safe-area-inset-top, 0px); padding-bottom:env(safe-area-inset-bottom, 0px); }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); }
+  body { font-family:"DotGothic16", "Hiragino Maru Gothic ProN", "Osaka-Mono", monospace; font-size:18px; line-height:1.8; -webkit-tap-highlight-color:transparent; }
+  #app { max-width:480px; margin:0 auto; min-height:100dvh; padding:20px 16px 32px; display:flex; flex-direction:column; gap:14px; }
+  .win { border:3px solid var(--fg); border-radius:10px; padding:16px 18px; background:#0d0d16; box-shadow:0 0 0 3px var(--bg), 0 0 0 5px #2a2a38; position:relative; }
+  .win.msg { min-height:150px; cursor:pointer; user-select:none; }
+  .win .label { position:absolute; top:-14px; left:14px; background:var(--bg); padding:0 8px; font-size:14px; color:var(--dim); }
+  .spacer { flex:1; min-height:8px; }
+  h1 { font-size:34px; font-weight:normal; text-align:center; margin:12vh 0 0; letter-spacing:.15em; }
+  .sub { text-align:center; color:var(--dim); font-size:14px; margin:0; letter-spacing:.2em; }
+  .q { margin:0 0 4px; }
+  .hint { color:var(--dim); font-size:14px; margin:4px 0 0; }
+  .opts { display:flex; flex-direction:column; gap:2px; }
+  button.opt { all:unset; display:block; padding:8px 10px 8px 30px; position:relative; border-radius:6px; cursor:pointer; line-height:1.5; }
+  button.opt::before { content:"▶"; position:absolute; left:8px; opacity:0; color:var(--accent); }
+  button.opt:focus-visible::before, button.opt.on::before { opacity:1; }
+  @media (hover:hover) { button.opt:hover::before { opacity:1; } }
+  button.opt.on { color:var(--accent); }
+  button.opt:focus-visible { outline:1px dashed var(--dim); }
+  button.opt[disabled] { color:#555; cursor:default; }
+  button.opt[disabled]::before { opacity:0; }
+  .opt small { display:block; color:var(--dim); font-size:13px; }
+  input[type=text] { width:100%; font:inherit; font-size:17px; color:var(--fg); background:#000; border:2px solid #555; border-radius:6px; padding:8px 10px; margin-top:8px; }
+  input[type=text]:focus { outline:none; border-color:var(--accent); }
+  .row { display:flex; gap:10px; justify-content:space-between; }
+  .next { text-align:right; color:var(--accent); animation:blink 1s steps(2) infinite; font-size:14px; height:18px; }
+  @keyframes blink { 50% { opacity:0; } }
+  .big { font-size:22px; color:var(--accent); }
+  .center { text-align:center; }
+  .stars { font-size:30px; letter-spacing:.2em; color:var(--accent); text-align:center; }
+  .muted { color:var(--dim); }
+  .fade { animation:fade .5s ease; }
+  @keyframes fade { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  p { margin:0; }
+  .scene-win { padding:8px; }
+  .scene { display:block; width:100%; height:auto; image-rendering:pixelated; border-radius:4px; }
+  .hp { display:flex; justify-content:space-between; align-items:center; font-size:15px; margin-top:8px; padding:0 4px; }
+  .hp .bar { color:var(--accent); letter-spacing:-1px; }
+  .status { color:var(--dim); font-size:14px; margin-top:4px; }
+  .lines p + p { margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(() => {
+'use strict';
+const app = document.getElementById('app');
+
+// ---------- data ----------
+const ACTIONS = {
+  soba:   'そばに いる（なにも いわない）',
+  kiku:   'はなしを きく',
+  iku:    'いっしょに どこかへ いく',
+  hitori: 'そっと ひとりに しておく',
+  advice: '「こうしたら？」と いってみる',
+  warau:  'わらわせる'
+};
+const SELF = {
+  yasumu:   'ゆっくり やすみたい',
+  hanasu:   'だれかに はなして すっきり したい',
+  kirikae:  'すきな ことを して きりかえたい',
+  ganbaru:  'もうすこし じぶんで がんばりたい',
+  yarikata: 'やりかたを かえて みたい',
+  hanareru: 'いったん はなれて わすれたい'
+};
+const THEMES = [
+  {k:'study',  l:'べんきょう・しごと'},
+  {k:'people', l:'ひとづきあい'},
+  {k:'life',   l:'からだ・せいかつ'},
+  {k:'future', l:'これからの こと'},
+  {k:'me',     l:'じぶんの こと'},
+  {k:'secret', l:'ないしょ', d:'テーマは あいてに みせない'}
+];
+const WHEN = [
+  {k:'asa',   l:'あさ'},
+  {k:'naka',  l:'がっこう・バイト ちゅう'},
+  {k:'kaeri', l:'かえりみち'},
+  {k:'yoru',  l:'よる ねるまえ'}
+];
+const WHO = [
+  {k:'none',      l:'だれも いない'},
+  {k:'friend',    l:'ともだち'},
+  {k:'family',    l:'かぞく'},
+  {k:'strangers', l:'しらない ひと たち'}
+];
+const FEELS = [
+  {k:'moyamoya',  l:'もやもや'},
+  {k:'kuyashii',  l:'くやしい'},
+  {k:'samishii',  l:'さみしい'},
+  {k:'aseru',     l:'あせる'},
+  {k:'tsukareta', l:'つかれた'},
+  {k:'jibun',     l:'じぶんが いや'},
+  {k:'wakaranai', l:'よく わからない'}
+];
+// ばしょは「どんな ばしょか」だけ。なにが あったかは つたわらない
+const PLACES = [
+  {k:'nigiyaka', l:'にぎやかな ばしょ',     area:'ざわざわの まち', g:'#4a3f3a', line:'まわりで たくさんの こえが ざわめいて いる。'},
+  {k:'hitori',   l:'ひとりに なれる ばしょ', area:'しずかな こや',   g:'#3a3a4a', line:'ちいさな こやの なかは しんと している。'},
+  {k:'itsumo',   l:'いつもの ばしょ',       area:'いつもの こみち', g:'#3b5a3a', line:'なんども とおった ことの ある みちだ。'},
+  {k:'hajimete', l:'はじめての ばしょ',     area:'しらない みなと', g:'#28404a', line:'みたことの ない ふねが ならんで いる。'},
+  {k:'idou',     l:'いどう ちゅう',         area:'ゆれる きしゃ',   g:'#40403a', line:'まどの そとの けしきが ながれて いく。'}
+];
+// テーマも たとえで しか ださない
+const THEME_HINT = {
+  study:  ['ちずの すみに、ほんが たかく つみあがった え。'],
+  people: ['ちずに、たくさんの あしあとが まじりあって いる。'],
+  life:   ['ちずから、ふとんと ごはんの においが する。'],
+  future: ['ちずの みちは、とおくまで つづいて いる。さきは かすれて みえない。'],
+  me:     ['ちずの まんなかに、ちいさな かがみが かいて ある。']
+};
+const SAND_HINT = {
+  asa:   'すなどけいの すなは、あさの ひかりの いろ。',
+  naka:  'すなどけいの すなが、なかなか おちきらない。',
+  kaeri: 'すなどけいの すなは、ゆうやけの いろ。',
+  yoru:  'すなどけいの すなは、よるの そらの いろ。'
+};
+const KAKERA = {
+  moyamoya:'きりの かけら', kuyashii:'かみなりの かけら', samishii:'あかりの かけら', aseru:'かぜの かけら',
+  tsukareta:'どろの かけら', jibun:'かがみの かけら', wakaranai:'なないろの かけら'
+};
+const FEEL_HINT = {
+  moyamoya:  'かけらの なかで、きりが うずまいて いる。',
+  kuyashii:  'かけらを にぎると、てのひらが じんわり あつく なる。',
+  samishii:  'かけらは ひんやり つめたい。だれかの ぬくもりを まって いる みたい。',
+  aseru:     'かけらが こきざみに ふるえて いる。',
+  tsukareta: 'かけらは みためより ずっしり おもい。',
+  jibun:     'かけらに うつる すがたが、くもって みえない。',
+  wakaranai: 'かけらの いろが くるくる かわる。'
+};
+const BELL_HINT = {
+  none:      ['すずを ならしても、だれも こたえない。'],
+  friend:    ['すずの おとに、なじみの あしおとが まじった。'],
+  family:    ['すずの おとが、なつかしい いえの ほうから かえって きた。'],
+  strangers: ['すずの おとが、たくさんの あしおとに かきけされた。']
+};
+const TIME_T = {
+  asa:   ['あさの ひかりが まだ うすい。', 'まどの そとで とりが ないている。'],
+  naka:  ['まわりは ざわざわと うごいている。', 'とけいの はりが やけに おそい。'],
+  kaeri: ['ゆうがたの ひかりが ななめに さしている。', 'かえりみちの かげが ながく のびている。'],
+  yoru:  ['よるが しずかに ひろがっている。', 'でんきを けしても ねむれない よるだ。']
+};
+// [そのまま, すこし, ぼんやり]
+const FEEL_T = {
+  moyamoya:  ['{n}は もやもや している。', 'むねの なかに きりが かかっている。', 'あたりに うすい きりが たちこめている。'],
+  kuyashii:  ['{n}は くやしい。', 'こぶしに ちからが はいっている。', 'とおくで かみなりが ごろごろ いっている。'],
+  samishii:  ['{n}は さみしい。', 'なんだか ひとりぶん さむい。', 'とおくで あかりが ひとつだけ ついている。'],
+  aseru:     ['{n}は あせっている。', 'あしもとが そわそわ おちつかない。', 'かぜが はやく ふきぬけていく。'],
+  tsukareta: ['{n}は つかれている。', 'からだが すこし おもたい。', 'じめんが ぬかるんで あしが しずむ。'],
+  jibun:     ['{n}は じぶんの ことが いやに なっている。', 'みずたまりに うつる かおを みたくない。', 'くもった かがみが ひとつ たっている。'],
+  wakaranai: ['{n}にも この きもちの なまえは わからない。', 'なまえの ない きもちが ただよっている。', 'なにいろか わからない そらが ひろがっている。']
+};
+// [そのまま・すこし, ぼんやり]
+const WHO_T = {
+  none:      ['まわりには だれも いない。', 'ひとの けはいは ない。'],
+  friend:    ['ちかくに ともだちが いる。', 'どこかで なじみの こえが する。'],
+  family:    ['そばに かぞくが いる。', 'いえの においが する。'],
+  strangers: ['しらない ひとたちが とおりすぎていく。', 'たくさんの あしおとが とおりすぎる。']
+};
+const STAMPS = [
+  {k:'ureshii', l:'それ うれしい', s:1},
+  {k:'chigau',  l:'ちょっと ちがうけど うれしい', s:0.5},
+  {k:'shindoi', l:'それは すこし しんどい', s:0}
+];
+// 「じぶんで こう したい」の とき
+const STAMPS_SELF = [
+  {k:'sore',   l:'そう、それ！', s:1},
+  {k:'chikai', l:'ちかい かも', s:0.5},
+  {k:'betsu',  l:'ちょっと ちがう', s:0}
+];
+// じぶんの ことばで こたえた ときに、せかいの もちぬしが きめる
+const JUDGE = [
+  {l:'ぴったり！', s:1},
+  {l:'ちかい',     s:0.5},
+  {l:'ちがう',     s:0}
+];
+const RECAP = {
+  make: ['もやもやした ときの ことを 1つ おもいだして、しつもんに こたえる。こたえは ぜんぶ たとえに かわるから、なにが あったかは あいてには つたわらないよ。',
+         'さいごに「だれかに どう して ほしいか」か「じぶんで どう したいか」を こっそり きめる。',
+         'できたら スマホを つぎの ひとに わたす。'],
+  walk: ['あいての もやもやの せかいを たんけん。「しらべる」で かけらを あつめよう。',
+         'おくには もやもやが まっている。かけらを つかうと、もやもやの しょうたいが みえてくる。',
+         'さいごに「こころの わざ」で、あいてに すること（または あいてが したい こと）を えらぶ。きいたかは こたえあわせで わかる。']
+};
+const SAMPLES = [
+  { name:'ミナト', theme:'study', wantType:'other', when:'kaeri', place:'nigiyaka', feels:['kuyashii','tsukareta'], who:'strangers',
+    want:'kiku', wantText:ACTIONS.kiku, hard:['advice'],
+    reason:'はなしを きいて もらえると、じぶんの なかで せいりが つく。アドバイスは まだ いらないかな。' },
+  { name:'ソラ', theme:'people', wantType:'other', when:'yoru', place:'hitori', feels:['samishii'], who:'none',
+    want:'custom', wantText:'「おきてる？」って れんらく してほしい', hard:['hitori'],
+    reason:'じぶんから れんらく するのは こわい。むこうから きたら すごく ほっと する。' },
+  { name:'ハル', theme:'study', wantType:'other', when:'naka', place:'itsumo', feels:['aseru','jibun'], who:'friend',
+    want:'warau', wantText:ACTIONS.warau, hard:['advice','soba'],
+    reason:'しんけんに なられると よけい あせっちゃう。わらえたら また がんばれる。' },
+  { name:'ユイ', theme:'future', wantType:'self', when:'yoru', place:'hitori', feels:['aseru','tsukareta'], who:'none',
+    want:'yasumu', wantText:SELF.yasumu, hard:['ganbaru'],
+    reason:'きょうは もう かんがえたくない。ひとばん ねたら、あしたは すこし まえを むける きが する。' }
+];
+
+// ---------- helpers ----------
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const shuffle = a => { a = a.slice(); for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+const fill = (s, v) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? '');
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  if (attrs) for (const [k,v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+function screen(...kids) {
+  app.innerHTML = '';
+  app.append(...kids.flat().filter(Boolean));
+  window.scrollTo(0,0);
+  const f = app.querySelector('input[type=text]:not([data-noauto])');
+  if (f) setTimeout(() => f.focus(), 50);
+}
+const win = (label, ...kids) => el('div', {class:'win fade'}, label ? el('span',{class:'label'},label) : null, ...kids);
+const opt = (text, onclick, extra={}) => el('button', {class:'opt' + (extra.on?' on':''), onclick, disabled: extra.disabled||false}, text, extra.small ? el('small',null,extra.small) : null);
+const spacer = () => el('div',{class:'spacer'});
+// にほんごの へんかん かくていの Enter では すすまない
+const onEnter = (f, fn) => f.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); fn(); }
+});
+
+// typewriter message sequence. lines: array of strings. done() after last tap.
+function messages(label, lines, done, opts={}) {
+  let i = 0, typing = false, timer = null, full = '';
+  const body = el('div', {class:'lines'});
+  const cur = el('p');
+  const nextMark = el('div', {class:'next'}, '');
+  const box = el('div', {class:'win msg fade', tabindex:'0', role:'button'}, label ? el('span',{class:'label'},label) : null, body, nextMark);
+  const keep = opts.keep ?? 3;
+  function show() {
+    full = lines[i];
+    if (opts.onLine) opts.onLine(i);
+    while (body.children.length >= keep) body.firstChild.remove();
+    const p = el('p'); body.append(p);
+    typing = true; nextMark.textContent = '';
+    let n = 0;
+    const chars = Array.from(full);
+    timer = setInterval(() => {
+      n++; p.textContent = chars.slice(0,n).join('');
+      if (n >= chars.length) finish(p);
+    }, 45);
+    show.p = p;
+  }
+  function finish(p) {
+    clearInterval(timer); typing = false; p.textContent = full; nextMark.textContent = '▼';
+  }
+  function tap() {
+    if (typing) { finish(show.p); return; }
+    i++;
+    if (i < lines.length) show();
+    else { box.removeEventListener('click', tap); document.removeEventListener('keydown', key); done(); }
+  }
+  function key(e) { if ((e.key === 'Enter' || e.key === ' ') && document.body.contains(box) && document.activeElement?.tagName !== 'INPUT') { e.preventDefault(); tap(); } }
+  box.addEventListener('click', tap);
+  document.addEventListener('keydown', key);
+  setTimeout(show, 0);
+  return box;
+}
+
+// ---------- state ----------
+let S = {};
+
+// ---------- title ----------
+function title() {
+  S = {};
+  screen(
+    el('h1', null, 'となりのせかい'),
+    el('p', {class:'sub'}, '— WORLD SWAP —'),
+    spacer(),
+    win(null, el('div',{class:'opts'},
+      opt('ふたりで あそぶ', names),
+      opt('ひとりで あそぶ', soloMenu),
+      opt('あそびかた', howto)
+    )),
+    el('p', {class:'hint center'}, 'にゅうりょく した ことは この がめんの なか だけ。どこにも おくられません。')
+  );
+}
+
+function howto() {
+  screen(
+    win('あそびかた', el('div', {class:'lines'},
+      el('p', null, '1. ひとりずつ、もやもやした ばめんを こたえて 「せかい」を つくる。こたえは ぜんぶ たとえに かわるので、なにが あったかは あいてに つたわらない。'),
+      el('p', null, '2. さいごに「だれかに どう して ほしいか」か「じぶんで どう したいか」を こっそり きめる。'),
+      el('p', null, '3. スマホを こうかんして、あいての せかいを たんけん。かけらを あつめる。'),
+      el('p', null, '4. おくに いる もやもやと たいけつ。かけらで しょうたいを みやぶって、「こころの わざ」を えらぶ。'),
+      el('p', null, '5. ふたりで いっしょに こたえあわせ。わざが とどいたら もやもやが はれる。'),
+      el('p', null, '6. ほんとうの はなしを するか、たとえの まま はなすかは、せかいを つくった ひとが きめる。'),
+      el('p', {class:'muted'}, 'ひとりで あそぶ ときは、じぶんの せかいを つくって、たびびと として そとから あるくよ。')
+    )),
+    spacer(),
+    win(null, el('div',{class:'opts'}, opt('もどる', title)))
+  );
+}
+
+// ---------- duo ----------
+function names() {
+  const a = el('input', {type:'text', maxlength:'8', placeholder:'ひとりめの なまえ'});
+  const b = el('input', {type:'text', maxlength:'8', placeholder:'ふたりめの なまえ'});
+  const go = () => {
+    const n1 = a.value.trim() || 'アオ', n2 = b.value.trim() || 'ミドリ';
+    S = { mode:'duo', players:[{name:n1}, {name:n2}], score:0 };
+    const intro = 'となりのせかいは、あいての もやもやの せかいを あるいて、ほんとうの きもちを あてる ゲーム。';
+    passTo(0, 'make', () => create(S.players[0], () =>
+      passTo(1, 'make', () => create(S.players[1], visitPhase), intro)), intro);
+  };
+  screen(
+    win('なまえ', el('p',{class:'q'},'ふたりの なまえを おしえて。'), a, b),
+    spacer(),
+    win(null, el('div',{class:'opts'}, opt('はじめる', go), opt('もどる', title)))
+  );
+}
+
+// スマホを わたす たびに、いま やる ことを みじかく せつめい する
+function passTo(i, phase, next, note) {
+  const n = S.players[i].name;
+  screen(
+    spacer(),
+    win(null, el('p',{class:'big center'}, n + ' に'), el('p',{class:'center'},'スマホを わたしてね')),
+    win('いま やること', el('div',{class:'lines'},
+      note ? el('p',{class:'muted'}, note) : null,
+      RECAP[phase].map((t,k) => el('p', null, (k+1) + '. ' + t))
+    ), el('p',{class:'hint'}, 'ほかの ひとは がめんを みないでね。')),
+    spacer(),
+    win(null, el('div',{class:'opts'}, opt(n + ' です。はじめる', next), opt('やめて タイトルへ', title)))
+  );
+}
+
+// ---------- create a world ----------
+function create(w, done) {
+  w.feels = [];
+  const steps = [
+    () => single('なんの もやもや？', 'だいたいで いいよ。あいてには たとえで しか つたわらない。', THEMES, v => { w.theme = v; next(); }, w.theme),
+    () => single('いつ？', 'そのとき の ことを おもいだしてね。', WHEN, v => { w.when = v; next(); }, w.when),
+    () => single('どんな ばしょ だった？', 'ばしょの なまえは きかないよ。', PLACES, v => { w.place = v; next(); }, w.place),
+    () => feels(),
+    () => single('そこに いた ひとは？', null, WHO, v => { w.who = v; next(); }, w.who),
+    () => want(),
+    () => fin()
+  ];
+  let idx = 0;
+  const next = () => { idx++; steps[idx](); };
+  const back = () => { if (idx > 0) { idx--; steps[idx](); } };
+  const stepLabel = () => w.name + ' の せかい ' + (idx+1) + '/' + (steps.length - 1);
+
+  function nav(extra) {
+    return win(null, el('div',{class:'opts'}, extra || null, idx > 0 ? opt('もどる', back) : null));
+  }
+  function single(q, hint, list, onpick, cur) {
+    screen(
+      win(stepLabel(), el('p',{class:'q'},q), hint ? el('p',{class:'hint'},hint) : null),
+      win(null, el('div',{class:'opts'}, list.map(x => opt(x.l, () => onpick(x.k), {on: cur === x.k, small: x.d})))),
+      spacer(), idx > 0 ? nav() : null
+    );
+  }
+  function text(q, hint, ph, max, cur, onok) {
+    const f = el('input', {type:'text', maxlength:String(max), placeholder:ph, value:cur||''});
+    onEnter(f, () => onok(f.value.trim()));
+    screen(
+      win(stepLabel(), el('p',{class:'q'},q), el('p',{class:'hint'},hint), f),
+      spacer(),
+      nav(opt('つぎへ', () => onok(f.value.trim())))
+    );
+  }
+  function feels() {
+    const sel = new Set(w.feels);
+    const draw = () => {
+      const list = el('div',{class:'opts'}, FEELS.map(x => opt(x.l, () => {
+        if (sel.has(x.k)) sel.delete(x.k);
+        else { if (sel.size >= 2) sel.delete(Array.from(sel)[0]); sel.add(x.k); }
+        draw();
+      }, {on: sel.has(x.k)})));
+      screen(
+        win(stepLabel(), el('p',{class:'q'},'そのとき どんな きもち？'), el('p',{class:'hint'},'2つまで えらべるよ。')),
+        win(null, list),
+        spacer(),
+        nav(opt('つぎへ', () => { w.feels = Array.from(sel); next(); }, {disabled: sel.size === 0}))
+      );
+    };
+    draw();
+  }
+  // まず「だれかに して ほしい」か「じぶんで したい」かを えらぶ
+  function want() {
+    const t = w.wantType;
+    screen(
+      win(stepLabel(), el('p',{class:'q'},'この もやもや、ほんとうは どう なったら いい？'), el('p',{class:'hint'},'あいてには ないしょ。あとで こたえあわせ するよ。')),
+      win(null, el('div',{class:'opts'},
+        opt('だれかに して ほしい ことが ある', () => wantList('other'), {on: t === 'other', small:'れい：はなしを きいて ほしい'}),
+        opt('じぶんで こう したい', () => wantList('self'), {on: t === 'self', small:'れい：ゆっくり やすみたい'}),
+        opt('まだ わからない', () => { w.wantType = 'unknown'; w.want = 'unknown'; w.wantText = 'まだ わからない'; next(); }, {on: t === 'unknown'})
+      )),
+      spacer(), nav()
+    );
+  }
+  function wantList(type) {
+    const dict = type === 'self' ? SELF : ACTIONS;
+    const same = w.wantType === type;
+    const f = el('input', {type:'text', maxlength:'30',
+      placeholder: type === 'self' ? 'じぶんで かく（れい：だれにも あわずに ねたい）' : 'じぶんで かく（れい：「おきてる？」って れんらく してほしい）',
+      value: same && w.want === 'custom' ? w.wantText : ''});
+    const set = (k, l) => { w.wantType = type; w.want = k; w.wantText = l; next(); };
+    const setCustom = () => { const v = f.value.trim(); if (!v) { f.focus(); return; } set('custom', v); };
+    onEnter(f, setCustom);
+    screen(
+      win(stepLabel(), el('p',{class:'q'}, type === 'self' ? 'ほんとうは どう したい？' : 'ほんとうは どう して ほしい？'), el('p',{class:'hint'},'たんけん ちゅうは ないしょ。こたえあわせの ときに あいてにも みえるよ。')),
+      win(null, el('div',{class:'opts'}, Object.entries(dict).map(([k,l]) => opt(l, () => set(k, l), {on: same && w.want === k})))),
+      win('じぶんの ことばで', f, el('p',{class:'hint'},'なにが あったかが わかる ことは、かかなくて だいじょうぶ。'), el('div',{class:'opts'}, opt('これに する', setCustom))),
+      spacer(),
+      win(null, el('div',{class:'opts'}, opt('もどる', want)))
+    );
+  }
+  function fin() {
+    screen(
+      spacer(),
+      win(null, el('p',{class:'big center'}, w.name + ' の せかいが できた。'), el('p',{class:'hint center'},'がめんを とじる まえに、つぎの ひとに わたしてね。')),
+      spacer(),
+      win(null, el('div',{class:'opts'}, opt('できた', done), opt('もどって なおす', back)))
+    );
+  }
+  steps[0]();
+}
+
+// ---------- build world text ----------
+function worldLines(w) {
+  return buildAreas(w).flatMap(a => a.lines);
+}
+
+function choicesFor(w) {
+  const dict = w.wantType === 'self' ? SELF : ACTIONS;
+  const keys = Object.keys(dict);
+  const mk = k => ({k, l:dict[k]});
+  let out;
+  if (w.want === 'unknown') out = shuffle(keys).slice(0,4).map(mk);
+  else if (w.want === 'custom') out = shuffle(keys).slice(0,4).map(mk);
+  else out = [mk(w.want), ...shuffle(keys.filter(k => k !== w.want)).slice(0,3).map(mk)];
+  return shuffle(out);
+}
+
+// ---------- pixel art ----------
+const HERO = [
+  '..hhhh..',
+  '.hhhhhh.',
+  '.hsesesh',
+  '..ssss..',
+  '.cccccc.',
+  'sccccccs',
+  '.cccccc.',
+  '..bbbb..',
+  '..b..b..',
+  '.bb..bb.'
+];
+const HERO_PAL = {h:'#5a3a22', s:'#f2c9a0', e:'#1a1a1a', c:'#3d7be0', b:'#2b2b3a'};
+const CHEST = [
+  '.yyyyyy.',
+  'yrrrrrry',
+  'yyyyyyyy',
+  'yrrkkrry',
+  'yrrrrrry',
+  'yyyyyyyy'
+];
+const CHEST_PAL = {y:'#e0b040', r:'#8a4b1c', k:'#222'};
+const MONSTER = [
+  '.....mmmmmm.....',
+  '...mmmmmmmmmm...',
+  '..mmmmmmmmmmmm..',
+  '.mmmmmmmmmmmmmm.',
+  'mmmwwmmmmmmwwmmm',
+  'mmmwemmmmmmwemmm',
+  'mmmmmmmmmmmmmmmm',
+  'mmmmmmkkkkmmmmmm',
+  'mmmmmkmmmmkmmmmm',
+  '.mmmmmmmmmmmmmm.',
+  '..mmm.mmmm.mmm..',
+  '...m...mm...m...'
+];
+function pix(rows, pal, ox, oy) {
+  let out = '';
+  rows.forEach((r, y) => Array.from(r).forEach((c, x) => {
+    if (pal[c]) out += '<rect x="' + (ox + x) + '" y="' + (oy + y) + '" width="1" height="1" fill="' + pal[c] + '"/>';
+  }));
+  return out;
+}
+const SKY = { asa:'#bfe3f2', naka:'#9aa6b2', kaeri:'#f0a868', yoru:'#1b2350' };
+const STARS = '<rect x="14" y="5" width="1" height="1" fill="#fff"/><rect x="40" y="10" width="1" height="1" fill="#fff"/><rect x="77" y="4" width="1" height="1" fill="#fff"/><rect x="101" y="12" width="1" height="1" fill="#fff"/><rect x="118" y="6" width="1" height="1" fill="#fff"/>';
+// きもち ごとの もやもや と エリア
+const MON = {
+  moyamoya:  {n:'モヤモヤ',     c:'#9a9aa8', area:'きりの もり',             g:'#2f4a35'},
+  kuyashii:  {n:'ゴロゴロモヤ', c:'#8b6fc9', area:'かみなりの おか',         g:'#4a3f2a'},
+  samishii:  {n:'ポツンモヤ',   c:'#6f9fd8', area:'ひとつあかりの むら',     g:'#2e3a4f'},
+  aseru:     {n:'ソワソワモヤ', c:'#e39a52', area:'かぜの とうげ',           g:'#5a4a2a'},
+  tsukareta: {n:'ズッシリモヤ', c:'#9b7b5b', area:'ぬかるみの ぬま',         g:'#3a3324'},
+  jibun:     {n:'クモリモヤ',   c:'#7d8a96', area:'くもりかがみの どうくつ', g:'#26262e'},
+  wakaranai: {n:'ナゾモヤ',     c:'#b07fb8', area:'なぞいろの そら',         g:'#3a2a40'}
+};
+const monFor = w => MON[(w.feels && w.feels[0]) || 'moyamoya'] || MON.moyamoya;
+const skyFor = w => SKY[w.when] || SKY.yoru;
+
+function svgBox(svg) { const d = el('div', {class:'win fade scene-win'}); d.innerHTML = svg; return d; }
+function sceneSvg(sky, ground, heroX, chest) {
+  return '<svg viewBox="0 0 128 40" class="scene" shape-rendering="crispEdges" role="img" aria-label="たんけん ちゅう">' +
+    '<rect width="128" height="40" fill="' + sky + '"/>' + (sky === SKY.yoru ? STARS : '') +
+    '<rect y="30" width="128" height="10" fill="' + ground + '"/><rect y="30" width="128" height="1" fill="rgba(255,255,255,.18)"/>' +
+    (chest ? pix(CHEST, CHEST_PAL, heroX + 18, 24) : '') + pix(HERO, HERO_PAL, heroX, 20) + '</svg>';
+}
+// もやもやの まど。hp が へると ちいさく、はっきり みえる ように なる
+function monWin(w, hp) {
+  const m = monFor(w), sky = skyFor(w);
+  const art = el('div');
+  const bar = el('span', {class:'bar'});
+  const box = el('div', {class:'win fade scene-win'}, art, el('div', {class:'hp'}, el('span', null, m.n), bar));
+  box.update = h => {
+    const k = Math.ceil(Math.max(0, h) / 10);
+    bar.textContent = '■'.repeat(k) + '□'.repeat(10 - k);
+    let g;
+    if (h <= 0) {
+      g = '<g fill="#ffd97a"><rect x="58" y="22" width="2" height="2"/><rect x="70" y="18" width="2" height="2"/><rect x="64" y="30" width="2" height="2"/><rect x="52" y="34" width="1" height="1"/><rect x="76" y="32" width="1" height="1"/></g>';
+    } else {
+      const sc = 1.6 + 1.6 * h / 100, blur = Math.max(0, (h - 40) / 60 * 1.4);
+      const x = (128 - 16 * sc) / 2, y = (52 - 12 * sc) / 2 + 2;
+      g = '<g filter="url(#mblur)" transform="translate(' + x.toFixed(1) + ' ' + y.toFixed(1) + ') scale(' + sc.toFixed(2) + ')">' +
+          pix(MONSTER, {m:m.c, w:'#fff', e:'#111', k:'#111'}, 0, 0) + '</g>';
+      g = '<defs><filter id="mblur"><feGaussianBlur stdDeviation="' + blur.toFixed(2) + '"/></filter></defs>' + g;
+    }
+    art.innerHTML = '<svg viewBox="0 0 128 56" class="scene" shape-rendering="crispEdges" role="img" aria-label="' + m.n + '">' +
+      '<rect width="128" height="56" fill="' + sky + '"/>' + (sky === SKY.yoru ? STARS : '') +
+      '<rect y="48" width="128" height="8" fill="rgba(0,0,0,.25)"/>' + g + '</svg>';
+  };
+  box.update(hp);
+  return box;
+}
+
+// こたえから エリアと かけらを つくる
+function buildAreas(w) {
+  const n = w.name, A = [];
+  const pl = PLACES.find(x => x.k === w.place) || PLACES[2];
+  A.push({ name:'せかいの いりぐち', g:'#3b5a3a',
+    lines:[n + ' の せかいに やってきた。', pick(TIME_T[w.when])],
+    item:{ name:'じかんの すなどけい', hint:[SAND_HINT[w.when]] } });
+  A.push({ name:pl.area, g:pl.g, lines:[pl.line],
+    item: THEME_HINT[w.theme] ? { name:'ふるい ちず', hint:THEME_HINT[w.theme] } : null });
+  for (const f of w.feels) {
+    const m = MON[f];
+    A.push({ name:m.area, g:m.g, lines:[FEEL_T[f][2]],
+      item:{ name:KAKERA[f], hint:[FEEL_HINT[f], 'これが ' + n + ' の きもちの ヒント かも。'] } });
+  }
+  A.push({ name:'しずかな ひろば', g:'#3a4440', lines:[WHO_T[w.who][1]],
+    item:{ name:'けはいの すず', hint:BELL_HINT[w.who] } });
+  return A;
+}
+
+// たんけん → もやもやと たいけつ → こころの わざ。done({k,l,hp,items})
+function walk(w, visitor, done, o = {}) {
+  const areas = buildAreas(w), bag = [], sky = skyFor(w);
+  let ai = 0;
+  const heroX = () => 8 + Math.round(ai * 84 / Math.max(1, areas.length - 1));
+  const scene = () => { const a = areas[ai]; return svgBox(sceneSvg(sky, a.g, heroX(), a.item && !a.taken)); };
+  function enter() { const a = areas[ai]; screen(scene(), spacer(), messages(a.name, a.lines, menu)); }
+  function menu() {
+    const a = areas[ai], last = ai === areas.length - 1;
+    screen(
+      scene(),
+      win(a.name, el('p', null, visitor + ' は どうする？'), el('p', {class:'status'}, 'かけら ' + bag.length + ' こ ／ ばしょ ' + (ai + 1) + '/' + areas.length)),
+      spacer(),
+      win(visitor, el('div', {class:'opts'},
+        opt('しらべる', look),
+        opt(last ? 'おくへ すすむ' : 'さきへ すすむ', go, {small: last ? 'なにかの けはいが する……' : null}),
+        bag.length ? opt('もちもの', bagView) : null
+      ))
+    );
+  }
+  function look() {
+    const a = areas[ai];
+    if (a.item && !a.taken) {
+      a.taken = true; bag.push(a.item);
+      screen(scene(), spacer(), messages(a.name, [visitor + ' は あたりを しらべた。', pick(['たからばこを みつけた！', 'くさの かげで なにかが ひかった！', 'あしもとに なにか おちている！']), a.item.name + ' を てに いれた！'], menu));
+    } else {
+      screen(scene(), spacer(), messages(a.name, [visitor + ' は あたりを しらべた。', a.item ? 'もう なにも ない みたいだ。' : 'とくに なにも ない みたいだ。'], menu));
+    }
+  }
+  function go() {
+    if (ai < areas.length - 1) { ai++; enter(); return; }
+    screen(scene(), spacer(), messages(areas[ai].name, ['おくへ すすむと……', 'くうきが ずしりと おもく なった。'], () => battle(w, visitor, bag, done, o)));
+  }
+  function bagView() {
+    screen(scene(),
+      win('もちもの', el('div', {class:'lines'}, bag.map(it => el('p', null, '・' + it.name))), el('p', {class:'hint'}, 'かけらの いみは、もやもやと たたかう ときに わかるよ。')),
+      spacer(), win(null, el('div', {class:'opts'}, opt('とじる', menu))));
+  }
+  enter();
+}
+
+function battle(w, visitor, bag, done, o = {}) {
+  const m = monFor(w);
+  let hp = 100, talked = false, seen = false;
+  // hp が へると、もやもやの かおが はっきり みえて くる
+  const peek = () => { if (!seen && hp <= 80) { seen = true; return [m.n + ' の かおが はっきり みえて きた！']; } return []; };
+  const used = new Set();
+  const per = bag.length ? Math.round(60 / bag.length) : 0;
+  const show = (lines, then) => screen(monWin(w, hp), spacer(), messages('たいけつ', lines, then));
+  show([m.n + ' が あらわれた！', 'これは ' + w.name + ' の こころに すむ もやもや だ。',
+        bag.length ? 'あつめた かけらで、しょうたいを みやぶろう。' : 'かけらは もって いない……。でも むきあう ことは できる。'], menu);
+  function menu() {
+    const left = bag.length - used.size;
+    screen(monWin(w, hp), spacer(), win(visitor, el('div', {class:'opts'},
+      opt('かけらを つかう', items, {disabled: left === 0, small: left + ' こ もっている'}),
+      opt('はなしかける', talk, {disabled: talked}),
+      opt('こころの わざ', waza, {small:'さいごの いちげき'}),
+      opt('にげる', () => show([visitor + ' は にげだした！', 'しかし もやもやは ついてくる！', 'ここは むきあって みよう。'], menu))
+    )));
+  }
+  function items() {
+    screen(monWin(w, hp), spacer(), win('かけら', el('div', {class:'opts'},
+      bag.map((it, i) => opt(it.name, () => useItem(i), {disabled: used.has(i)})),
+      opt('もどる', menu))));
+  }
+  function useItem(i) {
+    used.add(i); const it = bag[i];
+    hp = Math.max(30, hp - per);
+    show([visitor + ' は ' + it.name + ' を つかった！', ...it.hint, m.n + ' が すこし うすく なった！', ...peek()], menu);
+  }
+  function talk() {
+    talked = true; hp = Math.max(30, hp - 10);
+    const p = peek();
+    const sign = w.wantType === 'self' ? 'じぶんで なにか したそうに して いる。'
+               : w.wantType === 'other' ? 'だれかを まって いる みたいだ。'
+               : 'どう したら いいか、まよって いる みたいだ。';
+    show([visitor + ' は ' + m.n + ' に はなしかけた。', ...p, m.n + ' は ' + sign, 'すこし きょりが ちぢまった！'], menu);
+  }
+  function waza() {
+    if (o.selfVisit) return wazaSelf();
+    const ch = choicesFor(w), self = w.wantType === 'self';
+    const f = el('input', {type:'text', maxlength:'30', 'data-noauto':true,
+      placeholder: self ? 'じぶんで かく（れい：おいしい もの たべたい）' : 'じぶんで かく（れい：あったかい のみものを わたす）'});
+    const fire = c => {
+      c.hp = hp; c.items = used.size;
+      show([visitor + ' の こころの わざ！', '「' + c.l + '」', m.n + ' は じっと こちらを みている……', 'わざが とどいたかは、こたえあわせで わかる！'], () => done(c));
+    };
+    const setFree = () => { const v = f.value.trim(); if (!v) { f.focus(); return; } fire({k:'free', l:v}); };
+    onEnter(f, setFree);
+    screen(
+      self ? win('こころの わざ', el('p', {class:'big'}, m.n + ' を かかえた ' + w.name + ' は、ほんとうは どう したいと おもう？'), el('p', {class:'hint'}, visitor + ' が そうぞう して えらんでね。'))
+           : win('こころの わざ', el('p', {class:'big'}, m.n + ' を かかえた ' + w.name + ' に、' + visitor + ' は どうする？')),
+      win(null, el('div', {class:'opts'}, ch.map(c => opt(c.l, () => fire(c))))),
+      win(self ? 'じぶんの そうぞうで' : 'じぶんなら こう する', f, el('div', {class:'opts'}, opt('これに する', setFree))),
+      win(null, el('div', {class:'opts'}, opt('もどる', menu)))
+    );
+  }
+  // ひとりで じぶんの せかいを たずねる とき：ともだち だったら どうする？
+  function wazaSelf() {
+    const ch = shuffle(Object.keys(ACTIONS)).slice(0, 4).map(k => ({k, l:ACTIONS[k]}));
+    const f = el('input', {type:'text', maxlength:'30', 'data-noauto':true, placeholder:'じぶんで かく（れい：あったかい のみものを わたす）'});
+    const fire = c => show([visitor + ' の こころの わざ！', '「' + c.l + '」', m.n + ' が すこし やわらいだ……'], () => done(c));
+    const setFree = () => { const v = f.value.trim(); if (!v) { f.focus(); return; } fire({k:'free', l:v}); };
+    onEnter(f, setFree);
+    screen(
+      win('こころの わざ', el('p', {class:'big'}, 'もし ともだちが この ' + m.n + ' を かかえて いたら、どうする？'),
+        el('p', {class:'hint'}, 'じぶんの もやもやを、そとから みて みよう。')),
+      win(null, el('div', {class:'opts'}, ch.map(c => opt(c.l, () => fire(c))))),
+      win('じぶんなら こう する', f, el('div', {class:'opts'}, opt('これに する', setFree))),
+      win(null, el('div', {class:'opts'}, opt('もどる', menu)))
+    );
+  }
+}
+
+function visitPhase() {
+  const [p0, p1] = S.players;
+  passTo(0, 'walk', () => walk(p1, p0.name, c => {
+    p1.pick = c;
+    passTo(1, 'walk', () => walk(p0, p1.name, c2 => {
+      p0.pick = c2;
+      togetherScreen();
+    }), 'これから ' + p0.name + ' の せかいを あるくよ。');
+  }), 'これから ' + p1.name + ' の せかいを あるくよ。');
+}
+
+function togetherScreen() {
+  screen(
+    spacer(),
+    win(null, el('p',{class:'big center'},'こたえあわせ'), el('p',{class:'center'},'ふたりで いっしょに がめんを みてね。')),
+    spacer(),
+    win(null, el('div',{class:'opts'}, opt('はじめる', () => reveal(0))))
+  );
+}
+
+// reveal for world of player idx (author) visited by other
+function reveal(idx) {
+  const a = S.players[idx], v = S.players[1-idx];
+  const self = a.wantType === 'self';
+  screen(
+    win(a.name + ' の せかいで', el('p',null, v.name + (self ? ' は こう そうぞう した：' : ' は こうした：')), el('p',{class:'big'}, '▶ ' + a.pick.l)),
+    win(a.name + ' に きくよ', el('p',{class:'q'}, self ? 'そう おもわれて、どう かんじた？' : 'どう かんじた？'),
+      el('div',{class:'opts'}, (self ? STAMPS_SELF : STAMPS).map(s => opt(s.l, () => { a.stamp = s; revealWant(idx); })))),
+    spacer()
+  );
+}
+
+function revealWant(idx) {
+  const a = S.players[idx];
+  const head = [
+    a.name + (a.wantType === 'self' ? ' が ほんとうに したかったのは……' : ' が ほんとうに して ほしかったのは……'),
+    '「' + a.wantText + '」'
+  ];
+  // じぶんの ことばの こたえは じどうで はんてい できないので、もちぬしに きく
+  if (a.want !== 'unknown' && (a.pick.k === 'free' || a.want === 'custom')) {
+    screen(monWin(a, a.pick.hp ?? 60), spacer(), messages(a.name + ' の こたえ', head, () => judge(idx), {keep:4}));
+    return;
+  }
+  const m = a.want !== 'unknown' && a.pick.k === a.want ? 1 : 0;
+  finishReveal(idx, m, head);
+}
+
+function judge(idx) {
+  const a = S.players[idx], v = S.players[1-idx];
+  screen(
+    win(a.name + ' に きくよ', el('div',{class:'lines'},
+      el('p',null, v.name + ' の こたえ：'), el('p',{class:'big'}, '▶ ' + a.pick.l),
+      el('p',null, 'ほんとうの きもち：'), el('p',{class:'big'}, '▶ ' + a.wantText)
+    )),
+    win(null, el('p',{class:'q'}, 'ふたつは おなじ？'),
+      el('div',{class:'opts'}, JUDGE.map(j => opt(j.l, () => finishReveal(idx, j.s, []))))),
+    spacer()
+  );
+}
+
+function finishReveal(idx, m, head) {
+  const a = S.players[idx];
+  a.match = m === 1;
+  S.score += m + a.stamp.s;
+  const mon = monFor(a), hp0 = a.pick.hp ?? 60;
+  let endHp, verdict;
+  if (a.want === 'unknown') { endHp = hp0; verdict = [a.name + ' にも まだ わからない みたい。', mon.n + ' は まだ ふわふわ している。']; }
+  else if (m === 1)   { endHp = 0; verdict = ['かいしんの いちげき！ ぴったり！', mon.n + ' は ちいさな ひかりに なった。', 'せかいが すこし あかるく なった！']; }
+  else if (m === 0.5) { endHp = Math.round(hp0 / 2); verdict = ['わざは すこし とどいた！ おしい！', mon.n + ' は ちいさく なった。']; }
+  else { endHp = hp0; verdict = ['わざは とどかなかった……。', 'でも それも ひとつの こたえ。ふたりで はなせば かわる かも。']; }
+  const lines = [...head, ...verdict, a.name + ' の きもち：' + a.stamp.l];
+  const mw = monWin(a, hp0);
+  screen(mw, spacer(), messages(a.name + ' の こたえ', lines, () => share(idx), {keep:4, onLine: i => { if (i === head.length) mw.update(endHp); }}));
+}
+
+// ほんとうの はなしを するかは、せかいを つくった ひとが きめる
+function share(idx) {
+  const a = S.players[idx];
+  screen(
+    spacer(),
+    win(a.name + ' に きくよ', el('p',{class:'q'}, 'ほんとうの はなし、すこし する？'),
+      el('p',{class:'hint'}, 'はなさなくても だいじょうぶ。たとえの まま でも はなせるよ。')),
+    spacer(),
+    win(a.name, el('div',{class:'opts'},
+      opt('すこし はなす', () => talk(idx, true)),
+      opt('たとえの ままで いい', () => talk(idx, false))
+    ))
+  );
+}
+
+function talk(idx, open) {
+  const a = S.players[idx], v = S.players[1-idx];
+  const vars = {a:a.name, v:v.name, want:a.wantText, mon:monFor(a).n};
+  let prompts;
+  if (a.stamp.k === 'shindoi') prompts = ['どこが しんどかったか、いえる ぶんだけ はなしてみて。'];
+  else if (a.want === 'unknown') prompts = ['{v} が えらんだのを みて、{a} は どう おもった？', 'どんな ことを されたら いやじゃない？'];
+  else if (a.wantType === 'self' && a.match) prompts = ['どうして そう したいの？', '{v} は なんで わかったの？', '{a} が そう できるように、{v} に できる ことは ある？'];
+  else if (a.wantType === 'self') prompts = ['{a} が「{want}」と おもう りゆうって なんだろう？', '{v} は、じぶん だったら そう したいから えらんだ？', '{a} が そう できるように、{v} に できる ことは ある？'];
+  else if (a.match) prompts = ['どうして それが うれしいの？', '{v} は なんで それを えらんだの？'];
+  else prompts = ['{a} が「{want}」を して ほしい りゆうって なんだろう？', '{v} は、じぶん だったら そう して ほしいから えらんだ？', 'ほんとうは どうして ほしかったか、もうすこし きかせて。'];
+  const q = fill(pick(prompts), vars);
+  const q2 = open
+    ? fill('{a} が はなせる ぶんだけ、なにが あったかも きいて みよう。', vars)
+    : fill(pick(['{mon} が はれるには、なにが あると いい？', '{mon} は、どんな ときに あらわれると おもう？', '{v} の せかいにも {mon} みたいな もやもやは いる？']), vars);
+  screen(
+    spacer(),
+    win('はなしてみよう', el('p',{class:'big'}, q), el('p',{style:'margin-top:10px'}, q2), el('p',{class:'hint'},'スマホを おいて、すこし はなしてみてね。')),
+    spacer(),
+    win(null, el('div',{class:'opts'}, opt('はなせた', () => idx === 0 ? reveal(1) : ending())))
+  );
+}
+
+function ending() {
+  const max = 4, sc = S.score;
+  const n = Math.round(sc / max * 5);
+  const stars = '★'.repeat(n) + '☆'.repeat(5-n);
+  let msg;
+  if (n >= 4) msg = 'ふたりの せかいは けっこう ちかい みたい。';
+  else if (n >= 2) msg = 'ちかい ところも、とおい ところも あった。';
+  else msg = 'ずれた ぶんだけ、あたらしく しれた ことが ある。';
+  const [p0, p1] = S.players;
+  screen(
+    spacer(),
+    win('ふたりの ぴったりど', el('p',{class:'stars'}, stars), el('p',{class:'center'}, msg)),
+    win(null, el('div',{class:'lines'},
+      [p0, p1].map(p => el('p',{class:'muted'}, p.name + (p.wantType === 'self' ? ' が したかった：' : ' が して ほしかった：') + p.wantText)),
+      el('p',{class:'muted'}, 'たいけつで つかった かけら：ふたりで ' + ((p0.pick.items || 0) + (p1.pick.items || 0)) + ' こ')
+    )),
+    spacer(),
+    win(null, el('div',{class:'opts'}, opt('もういちど あそぶ', names), opt('タイトルへ', title)))
+  );
+}
+
+// ---------- solo ----------
+let sampleOrder = [];
+function soloMenu() {
+  screen(
+    spacer(),
+    win('ひとりで あそぶ', el('div',{class:'lines'},
+      el('p', null, 'まずは じぶんの せかいを つくって、たびびと に なって そとから あるいて みよう。'),
+      el('p', {class:'muted'}, 'こたえは この スマホの なか だけ。だれにも みせないよ。')
+    )),
+    spacer(),
+    win(null, el('div',{class:'opts'},
+      opt('じぶんの せかいを つくる', soloCreate),
+      opt('れんしゅう：みほんの せかいを あるく', soloStart, {small:'つくりものの せかいで あそびかたを おぼえる'}),
+      opt('もどる', title)
+    ))
+  );
+}
+function soloStart() {
+  if (!sampleOrder.length) sampleOrder = shuffle(SAMPLES);
+  const w = sampleOrder.pop();
+  S = { mode:'solo' };
+  walk(w, 'あなた', c => soloReveal(w, c));
+}
+function soloReveal(w, c) {
+  const match = c.k === w.want;
+  const free = c.k === 'free' || w.want === 'custom';
+  const self = w.wantType === 'self';
+  const st = self ? STAMPS_SELF : STAMPS;
+  const stamp = match ? st[0] : (w.hard.includes(c.k) ? st[2] : st[1]);
+  const lines = [
+    self ? 'あなたは「' + c.l + '」と そうぞう した。' : 'あなたは「' + c.l + '」を えらんだ。',
+    free ? null : w.name + ' の きもち：' + stamp.l,
+    w.name + (self ? ' が ほんとうに したかったのは……' : ' が ほんとうに して ほしかったのは……'),
+    '「' + w.wantText + '」',
+    free ? 'わざが とどいたかは、あなたの こたえと くらべて みて。'
+         : (match ? 'かいしんの いちげき！ ' + monFor(w).n + ' が はれて、ちいさな ひかりに なった。' : 'わざは とどかなかった……。でも それも ひとつの こたえ。'),
+    w.name + '「' + w.reason + '」'
+  ].filter(Boolean);
+  const mw = monWin(w, c.hp ?? 60);
+  const vi = lines.length - 2;
+  screen(mw, spacer(), messages(w.name + ' の こたえ', lines, () => {
+    screen(
+      spacer(),
+      win(null, el('p',{class:'center'}, 'ふたりで あそぶ ときは、ここで ほんとうに はなして みてね。')),
+      spacer(),
+      win(null, el('div',{class:'opts'},
+        opt('べつの みほんへ', soloStart),
+        opt('じぶんの せかいを つくって みる', soloCreate),
+        opt('タイトルへ', title)
+      ))
+    );
+  }, {keep:4, onLine: i => { if (i === vi && match) mw.update(0); }}));
+}
+function soloCreate() {
+  const w = {name:'あなた'};
+  const f = el('input', {type:'text', maxlength:'8', placeholder:'なまえ（かかなくても いいよ）'});
+  const go = () => {
+    w.name = f.value.trim() || 'あなた';
+    create(w, () => screen(
+      spacer(),
+      win(null, el('p',{class:'big center'}, w.name + ' の せかいが できた。'),
+        el('p',{class:'center'}, 'こんどは たびびと に なって、この せかいを そとから あるいて みよう。')),
+      spacer(),
+      win(null, el('div',{class:'opts'}, opt('たんけんに でる', () => walk(w, 'たびびと', c => selfReveal(w, c), {selfVisit:true}))))
+    ));
+  };
+  onEnter(f, go);
+  screen(
+    win('なまえ', el('p',{class:'q'},'なんて よべば いい？'), f),
+    spacer(),
+    win(null, el('div',{class:'opts'}, opt('はじめる', go), opt('もどる', soloMenu)))
+  );
+}
+
+// じぶんの せかいを たずねた あと：ともだちへの やさしさを、じぶんにも
+function selfReveal(w, c) {
+  const mw = monWin(w, c.hp ?? 60);
+  const lines = [
+    'たびびと は ' + monFor(w).n + ' を かかえた ' + w.name + ' に「' + c.l + '」を した。',
+    monFor(w).n + ' は ちいさな ひかりに なった。',
+    'せかいが すこし あかるく なった！',
+    'ところで、' + w.name + ' が きめた ねがいは……',
+    '「' + w.wantText + '」'
+  ];
+  screen(mw, spacer(), messages(w.name + ' の せかい', lines, () => {
+    screen(
+      spacer(),
+      win('こころの わざ', el('p',{class:'q'}, 'ともだちに できる やさしさを、じぶんにも つかって みる？'),
+        el('p',{class:'hint'}, '「' + c.l + '」を、じぶんに して あげる と したら。')),
+      spacer(),
+      win(null, el('div',{class:'opts'},
+        opt('つかって みる', () => selfEnd(w, ['きょうは すこし だけ、じぶんに「' + c.l + '」を して あげよう。', 'それだけで、せかいは すこし かわる かも。'])),
+        opt('いまは いい', () => selfEnd(w, ['それでも だいじょうぶ。', 'もやもやを そとから みられた だけで、ひとつ すすめたよ。']))
+      ))
+    );
+  }, {keep:5, onLine: i => { if (i === 1) mw.update(0); }}));
+}
+function selfEnd(w, lines) {
+  screen(spacer(), messages(w.name + ' の せかい', lines, () => screen(
+    spacer(),
+    win(null, el('p',{class:'center'}, 'この せかい、だれかに あるいて もらう？'),
+      el('p',{class:'hint center'}, 'ふたりで あそぶと、あいてが たんけんして ' + monFor(w).n + ' に わざを つかって くれるよ。なにが あったかは つたわらない。')),
+    spacer(),
+    win(null, el('div',{class:'opts'},
+      opt('ふたりで あそぶ', names),
+      opt('もういちど ひとりで', soloMenu),
+      opt('タイトルへ', title)
+    ))
+  )));
+}
+
+title();
+})();
+</script>
+</body>
+</html>
